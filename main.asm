@@ -7995,6 +7995,7 @@ GeneratePartyMonStats: ; d906
 	ld e, l
 	ld d, h
 	push hl
+	
 	ld a, [CurPartySpecies]
 	ld [CurSpecies], a
 	call GetBaseData
@@ -8020,11 +8021,13 @@ GeneratePartyMonStats: ; d906
 	and a
 	jr nz, .randomlygeneratemoves
 	ld de, EnemyMonMoves
+	
 	rept NUM_MOVES + -1
 	ld a, [de]
 	inc de
 	ld [hli], a
 	endr
+	
 	ld a, [de]
 	ld [hl], a
 	jr .next
@@ -8197,8 +8200,10 @@ endr
 	inc de
 
 .next2
+	; Check if in a trainer battle
 	ld a, [IsInBattle]
 	dec a
+	; Generate stats if NOT in a trainer battle
 	jr nz, .generatestats
 	ld hl, EnemyMonMaxHP
 	ld bc, 12
@@ -9468,40 +9473,50 @@ endr
 GivePoke:: ; e277
 	push de
 	push bc
+	; The player's party is where we want to try adding a Pokemon.
 	xor a
 	ld [MonType], a
 	call TryAddMonToParty
 	jr nc, .failed
+	; There's room in the party for another party member
 	ld hl, PartyMonNicknames
 	ld a, [PartyCount]
 	dec a
 	ld [CurPartyMon], a
 	call SkipNames
+	; hl == PartyMonNicknames + NAME_LENGTH * (PartyCount - 1)
+	; SkipNames is used to index a table
 	ld d, h
 	ld e, l
 	pop bc
 	ld a, b
-	ld b, $0
+	ld b, $0	; Why is b being zeroed?
 	push bc
 	push de
 	push af
+	; GivePoke is called from Script_givepoke.  CurItem is loaded based
+	; on the script that is currently being executed.
 	ld a, [CurItem]
 	and a
-	jr z, .asm_e2e1
+	jr z, .itemcheckdone
+	; The Pokemon to be given has an item
 	ld a, [CurPartyMon]
 	ld hl, PartyMon1Item
 	ld bc, PartyMon2 - PartyMon1
 	call AddNTimes
 	ld a, [CurItem]
 	ld [hl], a
-	jr .asm_e2e1
+	jr .itemcheckdone
 
 .failed
 	ld a, [CurPartySpecies]
 	ld [TempEnemyMonSpecies], a
 	callab LoadEnemyMon
 	call SentPkmnIntoBox
-	jp nc, Functione3d4
+	; Return if there is no box space left; this happens often in Gen II
+	; because only one box can be active at once
+	jp nc, NoMoreBoxSpace
+	; The Pokemon is to be stored in the box if there is box space left
 	ld a, $2
 	ld [MonType], a
 	xor a
@@ -9513,13 +9528,14 @@ GivePoke:: ; e277
 	push bc
 	push de
 	push af
+	; Check whether the Pokemon is supposed to have an item
 	ld a, [CurItem]
 	and a
-	jr z, .asm_e2e1
+	jr z, .itemcheckdone
 	ld a, [CurItem]
 	ld [sBoxMon1Item], a
 
-.asm_e2e1
+.itemcheckdone
 	ld a, [CurPartySpecies]
 	ld [wd265], a
 	ld [TempEnemyMonSpecies], a
@@ -9646,7 +9662,7 @@ endr
 	ret
 ; e3d4
 
-Functione3d4: ; e3d4
+NoMoreBoxSpace: ; e3d4
 	pop bc
 	pop de
 	ld b, $2
